@@ -1,0 +1,51 @@
+version: '3'
+services:
+  app:
+    # Menggunakan image PHP-FPM standar agar lebih mudah (tanpa Dockerfile ribet)
+    image: php:8.2-fpm
+    container_name: laravel-komodo-app
+    working_dir: /var/www/html
+    # Install ekstensi PHP yang dibutuhkan Laravel saat container nyala
+    command: >
+      sh -c "apt-get update && apt-get install -y libpng-dev libzip-dev zip unzip git &&
+             docker-php-ext-install pdo pdo_mysql bcmath gd zip &&
+             php-fpm"
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - laravel-komodo_default
+
+  web:
+    image: nginx:alpine
+    container_name: laravel-komodo-web
+    restart: always
+    depends_on:
+      - app
+    ports:
+      - "8080:80"   # <-- Port Aman
+    volumes:
+      - ./:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - laravel-komodo_default
+
+  db:
+    image: mysql:8.0
+    container_name: laravel-komodo-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: laravel
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - laravel-komodo_default
+
+networks:
+  laravel-komodo_default:
+    driver: bridge
+
+volumes:
+  db_data:
