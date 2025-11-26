@@ -11,7 +11,7 @@ services:
              docker-php-ext-install pdo pdo_mysql bcmath gd zip &&
              php-fpm"
     volumes:
-      - ./:/var/www/html
+      - /opt/laravel-komodo/src:/var/www/html
     networks:
       - laravel-komodo_default
 
