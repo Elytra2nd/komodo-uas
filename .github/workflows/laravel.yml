@@ -1,0 +1,42 @@
+name: Build Assets & Auto Commit
+
+on:
+  push:
+    branches: [ "main" ]
+    # Jangan jalankan jika commit berasal dari aksi ini sendiri (untuk mencegah loop)
+    paths-ignore:
+      - 'public/build/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Ambil kodingan terbaru
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # 2. Setup Node.js (v20 agar support Vite terbaru)
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    # 3. Install Dependency & Build
+    - name: Install NPM & Build
+      run: |
+        npm ci
+        npm run build
+
+    # 4. Commit & Push Hasil Build Balik ke Repo
+    - name: Commit & Push Build Assets
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "🤖 CI: Update Build Assets [skip ci]"
+        file_pattern: 'public/build/'
+        # Paksa add meskipun di .gitignore
+        disable_globbing: true 
+        add_options: '-f'
