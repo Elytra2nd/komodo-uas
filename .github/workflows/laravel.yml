@@ -1,42 +1,70 @@
-name: Build Assets & Auto Commit
+name: CI/CD Pipeline (Build & Test)
 
 on:
   push:
     branches: [ "main" ]
-    # Jangan jalankan jika commit berasal dari aksi ini sendiri (untuk mencegah loop)
     paths-ignore:
-      - 'public/build/**'
+      - 'public/build/**' # Jangan loop jika ada update aset
 
 permissions:
   contents: write
 
 jobs:
-  build-and-push:
+  # STAGE 1: TEST BACKEND (Laravel)
+  test-backend:
+    name: 🧪 Test Backend (PHPUnit)
     runs-on: ubuntu-latest
-
     steps:
-    # 1. Ambil kodingan terbaru
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    # 2. Setup Node.js (v20 agar support Vite terbaru)
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, gd, iconv, json, mbstring, pdo
+          tools: composer:v2
 
-    # 3. Install Dependency & Build
-    - name: Install NPM & Build
-      run: |
-        npm ci
-        npm run build
+      - name: Copy .env
+        run: php -r "file_exists('.env') || copy('.env.example', '.env');"
 
-    # 4. Commit & Push Hasil Build Balik ke Repo
-    - name: Commit & Push Build Assets
-      uses: stefanzweifel/git-auto-commit-action@v5
-      with:
-        commit_message: "🤖 CI: Update Build Assets [skip ci]"
-        file_pattern: 'public/build/'
-        # Paksa add meskipun di .gitignore
-        disable_globbing: true 
-        add_options: '-f'
+      - name: Install Dependencies
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      - name: Generate Key
+        run: php artisan key:generate
+
+      - name: Directory Permissions
+        run: chmod -R 777 storage bootstrap/cache
+
+      - name: 🧪 Execute Tests
+        run: php artisan test
+
+  # STAGE 2: BUILD FRONTEND (React/Vite) & DEPLOY SIGNAL
+  build-frontend:
+    name: 🏗️ Build Frontend & Push
+    runs-on: ubuntu-latest
+    needs: test-backend  # PENTING: Hanya jalan jika Test Backend SUKSES
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install NPM
+        run: npm ci
+
+      - name: 🏗️ Build Assets
+        run: npm run build
+
+      # Commit hasil build ke Repo (Ini akan memicu Webhook Komodo)
+      - name: Commit & Push Build Assets
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖 CI: Build & Test Passed [skip ci]"
+          file_pattern: 'public/build/'
+          disable_globbing: true
+          add_options: '-f'
