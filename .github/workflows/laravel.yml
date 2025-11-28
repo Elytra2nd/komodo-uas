@@ -15,7 +15,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2' # Sesuaikan, misal 8.3 atau 8.4
+          php-version: '8.2'
           extensions: mbstring, xml, bcmath
 
       - name: Install Dependencies (Composer)
@@ -28,7 +28,7 @@ jobs:
   # --- STAGE 2: TEST ---
   test:
     runs-on: ubuntu-latest
-    needs: build # Test hanya jalan kalau Build sukses
+    needs: build
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -49,16 +49,16 @@ jobs:
         run: php artisan key:generate
 
       - name: Run Tests (PHPUnit)
-        # Menggunakan database SQLite in-memory agar cepat & tidak perlu MySQL
         env:
           DB_CONNECTION: sqlite
-          DB_DATABASE: :memory:
+          # PERBAIKAN DI SINI: Ditambahkan tanda petik
+          DB_DATABASE: ':memory:'
         run: php artisan test
 
   # --- STAGE 3: DEPLOY (Ke Server Oracle) ---
   deploy:
     runs-on: ubuntu-latest
-    needs: test # Deploy hanya jalan kalau Test sukses
+    needs: test
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
