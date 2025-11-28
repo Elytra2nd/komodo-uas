@@ -67,6 +67,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: 22
+          debug: true
           script: |
             cd /home/ubuntu/my-project/webgis_app
             git pull origin main
