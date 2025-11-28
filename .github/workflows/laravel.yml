@@ -1,42 +1,79 @@
-name: Build Assets & Auto Commit
+name: CI/CD Pipeline (Build - Test - Deploy)
 
 on:
   push:
     branches: [ "main" ]
-    # Jangan jalankan jika commit berasal dari aksi ini sendiri (untuk mencegah loop)
-    paths-ignore:
-      - 'public/build/**'
-
-permissions:
-  contents: write
 
 jobs:
-  build-and-push:
+  # --- STAGE 1: BUILD ---
+  build:
     runs-on: ubuntu-latest
-
     steps:
-    # 1. Ambil kodingan terbaru
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    # 2. Setup Node.js (v20 agar support Vite terbaru)
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2' # Sesuaikan, misal 8.3 atau 8.4
+          extensions: mbstring, xml, bcmath
 
-    # 3. Install Dependency & Build
-    - name: Install NPM & Build
-      run: |
-        npm ci
-        npm run build
+      - name: Install Dependencies (Composer)
+        run: |
+          composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
 
-    # 4. Commit & Push Hasil Build Balik ke Repo
-    - name: Commit & Push Build Assets
-      uses: stefanzweifel/git-auto-commit-action@v5
-      with:
-        commit_message: "🤖 CI: Update Build Assets [skip ci]"
-        file_pattern: 'public/build/'
-        # Paksa add meskipun di .gitignore
-        disable_globbing: true 
-        add_options: '-f'
+      - name: Check Syntax (Linting)
+        run: find . -name "*.php" -not -path "./vendor/*" -exec php -l {} \; | grep -v "No syntax errors" || true
+
+  # --- STAGE 2: TEST ---
+  test:
+    runs-on: ubuntu-latest
+    needs: build # Test hanya jalan kalau Build sukses
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, bcmath
+
+      - name: Copy .env
+        run: php -r "file_exists('.env') || copy('.env.example', '.env');"
+
+      - name: Install Dependencies
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      - name: Generate Key
+        run: php artisan key:generate
+
+      - name: Run Tests (PHPUnit)
+        # Menggunakan database SQLite in-memory agar cepat & tidak perlu MySQL
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: :memory:
+        run: php artisan test
+
+  # --- STAGE 3: DEPLOY (Ke Server Oracle) ---
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test # Deploy hanya jalan kalau Test sukses
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/my-project/webgis_app
+            git pull origin main
+            docker exec laravel-project-app-1 composer install --ignore-platform-req=php --no-dev --optimize-autoloader
+            docker exec laravel-project-app-1 php artisan migrate --force
+            docker exec laravel-project-app-1 php artisan optimize:clear
+            docker exec laravel-project-app-1 php artisan config:cache
+            docker exec laravel-project-app-1 php artisan view:cache
+            sudo chmod -R 777 storage bootstrap/cache
+            echo "🚀 Deployment Selesai!"
